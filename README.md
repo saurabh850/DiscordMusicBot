@@ -17,24 +17,21 @@ Run the following command to install all necessary Python packages:
 
     pip install -r requirements.txt
 
+2. Set Up Environment Variables
 
-2. Windows Command Prompt:
-
-    set DISCORD_TOKEN=your_discord_token
-    set SPOTIFY_CLIENT_ID=your_spotify_client_id
-    set SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
-    python bot.py
-
-
-3. Set Up Environment Variables
-
- (Linux/macOS/WSL):
+(Linux/macOS/WSL):
 
     export DISCORD_TOKEN="your_discord_token"
     export SPOTIFY_CLIENT_ID="your_spotify_client_id"
     export SPOTIFY_CLIENT_SECRET="your_spotify_client_secret"
     python bot.py
 
+Windows Command Prompt:
+
+    set DISCORD_TOKEN=your_discord_token
+    set SPOTIFY_CLIENT_ID=your_spotify_client_id
+    set SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
+    python bot.py
 
 Preferred method command-line arguments:
 
