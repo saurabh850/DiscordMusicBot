@@ -227,19 +227,26 @@ async def stop(interaction: discord.Interaction):
     await interaction.response.send_message("⏹️ Stopped and cleared queue.")
 
 
-@tree.command(name="disconnect", description="Show a button to disconnect the bot from voice channel")
+@tree.command(name="disconnect", description="Disconnect from voice channel")
 async def disconnect(interaction: discord.Interaction):
-    view = DisconnectView()
-    await interaction.response.send_message("Press the button below to disconnect the bot:", view=view, ephemeral=True)
-
-class DisconnectView(discord.ui.View):
-    @discord.ui.button(label="Disconnect", style=discord.ButtonStyle.danger)
-    async def disconnect_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.guild.voice_client:
-            await interaction.guild.voice_client.disconnect()
-            await interaction.response.edit_message(content="🔌 Disconnected from voice channel.", view=None)
-        else:
-            await interaction.response.send_message("❌ I'm not connected to a voice channel.", ephemeral=True)
+    global current_voice_client, is_playing, now_playing
+    
+    if current_voice_client:
+        await current_voice_client.disconnect()
+        current_voice_client = None
+        is_playing = False
+        now_playing = None
+        
+        # Clear queue
+        while not song_queue.empty():
+            try:
+                song_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+                
+        await interaction.response.send_message("👋 Disconnected from voice channel.")
+    else:
+        await interaction.response.send_message("⚠️ Not connected to a voice channel.")
 
 
 @tree.command(name="queue", description="Show the current queue")
@@ -298,85 +305,16 @@ async def stats(interaction: discord.Interaction, url: str):
         await interaction.followup.send(f"❌ Error: {e}")
 
 
-# --- Autocomplete callback for skipto ---
-async def skipto_autocomplete(interaction: discord.Interaction, current: str):
-    # Build a list of song names in the queue
-    queue_list = []
-    temp_queue = []
-    while not song_queue.empty():
-        try:
-            item = song_queue.get_nowait()
-            temp_queue.append(item)
-            queue_list.append(item)
-        except asyncio.QueueEmpty:
-            break
-    for item in temp_queue:
-        await song_queue.put(item)
-    # Filter by current input and LIMIT TO 25
-    choices = [
-        app_commands.Choice(name=song, value=str(i))
-        for i, song in enumerate(queue_list, 1)
-        if current.lower() in song.lower()
-    ]
-    return choices[:25]  # Discord max 25 suggestions
-
-# --- Skip to command ---
-@tree.command(name="skipto", description="Skip to a specific song in the queue")
-@app_commands.describe(song_index="Pick a song to skip to")
-@app_commands.autocomplete(song_index=skipto_autocomplete)
-async def skipto(interaction: discord.Interaction, song_index: str):
-    global is_playing, now_playing
-
-    await interaction.response.defer()  # Defer immediately!
-
-    # Get queue as list
-    queue_list = []
-    temp_queue = []
-    while not song_queue.empty():
-        try:
-            item = song_queue.get_nowait()
-            temp_queue.append(item)
-            queue_list.append(item)
-        except asyncio.QueueEmpty:
-            break
-    for item in temp_queue:
-        await song_queue.put(item)
-
-    try:
-        idx = int(song_index) - 1
-        if idx < 0 or idx >= len(queue_list):
-            await interaction.followup.send("❌ Invalid song selection.", ephemeral=True)
-            return
-        # Remove all songs before the selected one
-        for _ in range(idx):
-            await song_queue.get()
-        # Stop current song, after callback will play next
-        if current_voice_client and (current_voice_client.is_playing() or current_voice_client.is_paused()):
-            current_voice_client.stop()
-        await interaction.followup.send(f"⏭️ Skipped to: **{queue_list[idx]}**")
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error: {e}", ephemeral=True)
-
-
-@tasks.loop(minutes=30)
+@tasks.loop(hours=24)
 async def cleanup_old_files():
-    folder = "songs"
     now = datetime.now()
-    cutoff = now - timedelta(minutes=30)
-    deleted = 0
-
-    for filename in os.listdir(folder):
-        filepath = os.path.join(folder, filename)
-        if os.path.isfile(filepath):
-            mtime = datetime.fromtimestamp(os.path.getmtime(filepath))
-            if mtime < cutoff:
-                try:
-                    os.remove(filepath)
-                    deleted += 1
-                except Exception as e:
-                    print(f"❌ Could not delete {filepath}: {e}")
-    if deleted:
-        print(f"🧹 Deleted {deleted} old song(s) from {folder}")
+    for filename in os.listdir(DOWNLOAD_FOLDER):
+        file_path = os.path.join(DOWNLOAD_FOLDER, filename)
+        if os.path.isfile(file_path):
+            modified = datetime.fromtimestamp(os.path.getmtime(file_path))
+            if now - modified > timedelta(days=30):
+                os.remove(file_path)
+                print(f"🧹 Deleted old file: {filename}")
 
 
 # Error handler for voice client
