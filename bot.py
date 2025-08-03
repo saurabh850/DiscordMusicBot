@@ -105,7 +105,6 @@ async def play_next_song(interaction):
         print("🎵 Queue empty, stopping playback")
         return
 
-    # Don't set processing_queue here - wait until we actually start processing
     
     try:
         query = await song_queue.get()
@@ -125,46 +124,46 @@ async def play_next_song(interaction):
                 return
 
         # Download the song
-        print(f"⬇️ Starting download: {query}")
+        print(f"Starting download: {query}")
         mp3_path = download_song(query)
-        print(f"📁 Download result: {mp3_path}")
+        print(f"Download result: {mp3_path}")
         
         if not mp3_path:
-            print(f"❌ Download failed (None returned): {query}")
+            print(f" Download failed (None returned): {query}")
             processing_queue = False
             await play_next_song(interaction)
             return
             
         if not os.path.exists(mp3_path):
-            print(f"❌ File doesn't exist: {mp3_path}")
+            print(f"File doesn't exist: {mp3_path}")
             processing_queue = False
             await play_next_song(interaction)
             return
 
         file_size = os.path.getsize(mp3_path)
-        print(f"✅ File ready: {mp3_path} ({file_size} bytes)")
+        print(f"File ready: {mp3_path} ({file_size} bytes)")
         
         if file_size < 1000:  # Less than 1KB is probably an error
-            print(f"❌ File too small, probably corrupted: {file_size} bytes")
+            print(f"File too small, probably corrupted: {file_size} bytes")
             processing_queue = False
             await play_next_song(interaction)
             return
 
         # Check if voice client is still connected
         if not current_voice_client or not current_voice_client.is_connected():
-            print("❌ Voice client disconnected during download")
+            print("Voice client disconnected during download")
             processing_queue = False
             return
 
         # Stop any currently playing audio
         if current_voice_client.is_playing():
-            print("⏹️ Stopping current audio")
+            print("Stopping current audio")
             current_voice_client.stop()
 
         now_playing = query
         is_playing = True
         
-        print(f"🎵 Starting playback: {query}")
+        print(f"Starting playback: {query}")
         
         # Simplified FFmpeg options for debugging
         ffmpeg_options = {
@@ -173,12 +172,12 @@ async def play_next_song(interaction):
         
         def after_playing(error):
             global is_playing, processing_queue
-            print(f"🔄 after_playing called for: {query}")
+            print(f"after_playing called for: {query}")
             
             if error:
-                print(f"❌ Playback error: {error}")
+                print(f"Playback error: {error}")
             else:
-                print(f"✅ Finished playing: {query}")
+                print(f"Finished playing: {query}")
             
             is_playing = False
             processing_queue = False
@@ -193,11 +192,11 @@ async def play_next_song(interaction):
         try:
             # Create audio source
             audio_source = FFmpegPCMAudio(mp3_path, **ffmpeg_options)
-            print(f"🎧 Audio source created for: {query}")
+            print(f"Audio source created for: {query}")
             
             # Start playing
             current_voice_client.play(audio_source, after=after_playing)
-            print(f"▶️ Playback started: {query}")
+            print(f"Playback started: {query}")
             
             # Send message to Discord
             try:
@@ -206,16 +205,16 @@ async def play_next_song(interaction):
                 elif hasattr(interaction, 'channel') and interaction.channel:
                     await interaction.channel.send(f"🎵 Now playing: **{query}**")
             except Exception as msg_error:
-                print(f"⚠️ Could not send message: {msg_error}")
+                print(f"Could not send message: {msg_error}")
                 
         except Exception as play_error:
-            print(f"❌ Error starting playback: {play_error}")
+            print(f"Error starting playback: {play_error}")
             is_playing = False
             processing_queue = False
             await play_next_song(interaction)
             
     except Exception as e:
-        print(f"❌ Major error in play_next_song: {e}")
+        print(f"Major error in play_next_song: {e}")
         import traceback
         traceback.print_exc()
         processing_queue = False
@@ -231,7 +230,7 @@ async def play(interaction: discord.Interaction, query: str):
     user = interaction.user
 
     if not user.voice or not user.voice.channel:
-        await interaction.followup.send("❌ Join a voice channel first.")
+        await interaction.followup.send("oin a voice channel first.")
         return
 
     # Connect to voice channel if not connected
@@ -240,7 +239,7 @@ async def play(interaction: discord.Interaction, query: str):
             current_voice_client = await user.voice.channel.connect()
             print(f"✅ Connected to {user.voice.channel.name}")
         except Exception as e:
-            await interaction.followup.send(f"❌ Failed to connect to voice channel: {e}")
+            await interaction.followup.send(f"Failed to connect to voice channel: {e}")
             return
 
     # Add to queue
@@ -248,10 +247,10 @@ async def play(interaction: discord.Interaction, query: str):
     queue_size = song_queue.qsize()
     
     if queue_size == 1 and not is_playing:
-        await interaction.followup.send(f"🎵 Playing: **{query}**")
+        await interaction.followup.send(f"Playing: **{query}**")
         await play_next_song(interaction)
     else:
-        await interaction.followup.send(f"🎵 Queued: **{query}** (Position: {queue_size})")
+        await interaction.followup.send(f"Queued: **{query}** (Position: {queue_size})")
 
 
 @tree.command(name="playlist", description="Queue all songs in a Spotify playlist")
@@ -261,20 +260,20 @@ async def playlist(interaction: discord.Interaction, url: str):
     user = interaction.user
 
     if not user.voice or not user.voice.channel:
-        await interaction.followup.send("❌ Join a voice channel first.")
+        await interaction.followup.send("Join a voice channel first.")
         return
 
     try:
         tracks = get_tracks_from_playlist(url)
         if not tracks:
-            await interaction.followup.send("❌ No tracks found in playlist.")
+            await interaction.followup.send("No tracks found in playlist.")
             return
 
         # Add all tracks to queue WITHOUT downloading them yet
         for track in tracks:
             await song_queue.put(track)
 
-        await interaction.followup.send(f"✅ Queued {len(tracks)} songs from playlist. Starting playback...")
+        await interaction.followup.send(f"Queued {len(tracks)} songs from playlist. Starting playback...")
 
         global current_voice_client, is_playing
         
@@ -287,34 +286,34 @@ async def playlist(interaction: discord.Interaction, url: str):
             await play_next_song(interaction)
             
     except Exception as e:
-        await interaction.followup.send(f"❌ Error loading playlist: {e}")
+        await interaction.followup.send(f"Error loading playlist: {e}")
 
 
 @tree.command(name="pause", description="Pause the current song")
 async def pause(interaction: discord.Interaction):
     if current_voice_client and current_voice_client.is_playing():
         current_voice_client.pause()
-        await interaction.response.send_message("⏸️ Paused.")
+        await interaction.response.send_message("Paused.")
     else:
-        await interaction.response.send_message("⚠️ Nothing is playing.")
+        await interaction.response.send_message("Nothing is playing.")
 
 
 @tree.command(name="resume", description="Resume the paused song")
 async def resume(interaction: discord.Interaction):
     if current_voice_client and current_voice_client.is_paused():
         current_voice_client.resume()
-        await interaction.response.send_message("▶️ Resumed.")
+        await interaction.response.send_message("Resumed.")
     else:
-        await interaction.response.send_message("⚠️ Nothing is paused.")
+        await interaction.response.send_message("Nothing is paused.")
 
 
 @tree.command(name="skip", description="Skip the current song")
 async def skip(interaction: discord.Interaction):
     if current_voice_client and (current_voice_client.is_playing() or current_voice_client.is_paused()):
         current_voice_client.stop()  # This will trigger the after callback
-        await interaction.response.send_message("⏭️ Skipped.")
+        await interaction.response.send_message("Skipped.")
     else:
-        await interaction.response.send_message("⚠️ Nothing to skip.")
+        await interaction.response.send_message("Nothing to skip.")
 
 
 @tree.command(name="stop", description="Stop playing and clear the queue")
@@ -335,7 +334,7 @@ async def stop(interaction: discord.Interaction):
     is_playing = False
     now_playing = None
     processing_queue = False
-    await interaction.response.send_message("⏹️ Stopped and cleared queue.")
+    await interaction.response.send_message("Stopped and cleared queue.")
 
 
 @tree.command(name="disconnect", description="Disconnect from voice channel")
@@ -414,7 +413,7 @@ async def stats(interaction: discord.Interaction, url: str):
             f"- Top Artists: {', '.join(stats['artists'][:5])}{'...' if len(stats['artists']) > 5 else ''}"
         )
     except Exception as e:
-        await interaction.followup.send(f"❌ Error: {e}")
+        await interaction.followup.send(f"Error: {e}")
 
 
 @tasks.loop(hours=24)
@@ -446,5 +445,5 @@ if __name__ == "__main__":
     try:
         bot.run(CREDENTIALS['discord_token'])
     except Exception as e:
-        print(f"❌ Failed to start bot: {e}")
+        print(f"Failed to start bot: {e}")
         sys.exit(1)
