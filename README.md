@@ -1,16 +1,15 @@
 ## Discord Spotify Music Bot
 
-Description:
 A self-hosted Discord bot that allows users to play music from Spotify and YouTube directly in voice channels. It supports individual songs, full playlists, and provides useful commands such as pause, resume, skip, and queue viewing. The bot is intended for personal or small community use and is designed to be lightweight and flexible.
 
-Goals:
+# Goals:
 - Enable private, high-quality music playback in Discord using Spotify and YouTube.
 - Provide full playlist queuing from Spotify with accurate metadata extraction.
 - Support multiple methods for secure credential input (environment variables, CLI, or prompts).
 - Automatically manage and clean up downloaded audio files.
 - Expose features through Discord's modern slash commands.
 
-Setup Instructions:
+## Setup Instructions:
 
 1. Install Dependencies
 
@@ -51,7 +50,7 @@ Your project should include the following files:
     README.txt
     songs/            (empty folder for storing downloaded files)
 
-4. Features and Commands
+# 4. Features and Commands
 
 - /play <query>        - Play a song from YouTube or Spotify
 - /playlist <url>      - Queue all songs from a Spotify playlist
