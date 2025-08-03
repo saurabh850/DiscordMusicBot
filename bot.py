@@ -2,14 +2,12 @@ import os
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands, FFmpegPCMAudio
-from dotenv import load_dotenv
 from downloader import download_song
 from spotify_utils import get_tracks_from_playlist, get_playlist_stats
 from datetime import datetime, timedelta
 import asyncio
-from os import path
+import sys
 
-load_dotenv()
 DOWNLOAD_FOLDER = "songs"
 # Note: songs folder should already exist
 
@@ -17,12 +15,73 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
+# Secure credentials loading - multiple methods
+def get_credentials():
+    """
+    Try multiple methods to get credentials securely:
+    1. Environment variables
+    2. Command line arguments
+    3. Secure input prompts
+    """
+    import getpass
+    
+    credentials = {}
+    
+    # Try to get Discord token
+    discord_token = os.getenv("DISCORD_TOKEN")
+    if not discord_token and len(sys.argv) > 1:
+        discord_token = sys.argv[1]
+    if not discord_token:
+        print("Discord token not found in environment variables.")
+        discord_token = getpass.getpass("Please enter your Discord bot token: ")
+    
+    credentials['discord_token'] = discord_token
+    
+    # Try to get Spotify credentials
+    spotify_client_id = os.getenv("SPOTIFY_CLIENT_ID")
+    spotify_client_secret = os.getenv("SPOTIFY_CLIENT_SECRET")
+    
+    if not spotify_client_id and len(sys.argv) > 2:
+        spotify_client_id = sys.argv[2]
+    if not spotify_client_secret and len(sys.argv) > 3:
+        spotify_client_secret = sys.argv[3]
+        
+    if not spotify_client_id:
+        print("Spotify Client ID not found in environment variables.")
+        spotify_client_id = getpass.getpass("Please enter your Spotify Client ID: ")
+    
+    if not spotify_client_secret:
+        print("Spotify Client Secret not found in environment variables.")
+        spotify_client_secret = getpass.getpass("Please enter your Spotify Client Secret: ")
+    
+    credentials['spotify_client_id'] = spotify_client_id
+    credentials['spotify_client_secret'] = spotify_client_secret
+    
+    return credentials
+
+# Get all credentials using secure method
+CREDENTIALS = get_credentials()
+
+# Validate required credentials
+if not CREDENTIALS['discord_token']:
+    print("❌ No Discord token provided. Bot cannot start.")
+    sys.exit(1)
+
+if not CREDENTIALS['spotify_client_id'] or not CREDENTIALS['spotify_client_secret']:
+    print("❌ Spotify credentials missing. Bot cannot access Spotify features.")
+    sys.exit(1)
+
+# Set environment variables for spotify_utils module
+os.environ['SPOTIFY_CLIENT_ID'] = CREDENTIALS['spotify_client_id']
+os.environ['SPOTIFY_CLIENT_SECRET'] = CREDENTIALS['spotify_client_secret']
+
 bot = commands.Bot(command_prefix="/", intents=intents)
 tree = bot.tree
 song_queue = asyncio.Queue()
 current_voice_client = None
 now_playing = None
 is_playing = False
+processing_queue = False  # Simple flag to prevent multiple queue processing
 
 
 @bot.event
@@ -33,83 +92,134 @@ async def on_ready():
 
 
 async def play_next_song(interaction):
-    global now_playing, is_playing, current_voice_client
+    global now_playing, is_playing, current_voice_client, processing_queue
 
+    # Prevent multiple simultaneous calls
+    if processing_queue:
+        print("⚠️ Already processing queue, ignoring duplicate call")
+        return
+    
     if song_queue.empty():
         now_playing = None
         is_playing = False
+        print("🎵 Queue empty, stopping playback")
         return
 
+    # Don't set processing_queue here - wait until we actually start processing
+    
     try:
         query = await song_queue.get()
-        print(f"🎵 Downloading: {query}")
+        print(f"🎵 Got from queue: {query}")
         
-        # Download the song
-        mp3_path = download_song(query)
-        print(f"📁 Download returned path: {mp3_path}")
+        # NOW set the processing flag
+        processing_queue = True
         
-        if not mp3_path:
-            print(f"❌ download_song returned None for: {query}")
-            await play_next_song(interaction)  # Try next song
-            return
-        
-        if not os.path.exists(mp3_path):
-            print(f"❌ File doesn't exist at path: {mp3_path}")
-            # Let's check what files ARE in the songs folder
-            try:
-                files_in_folder = os.listdir("songs")
-                print(f"📂 Files in songs folder: {files_in_folder}")
-            except:
-                print("❌ Can't access songs folder")
-            await play_next_song(interaction)  # Try next song
-            return
-
-        print(f"✅ File exists at: {mp3_path}")
-        print(f"📊 File size: {os.path.getsize(mp3_path)} bytes")
-
-        # Ensure voice client is connected
+        # Ensure voice client is connected FIRST
         if not current_voice_client or not current_voice_client.is_connected():
             if interaction.user.voice and interaction.user.voice.channel:
+                print(f"🔌 Connecting to voice channel: {interaction.user.voice.channel.name}")
                 current_voice_client = await interaction.user.voice.channel.connect()
             else:
                 print("❌ User not in voice channel")
+                processing_queue = False
                 return
+
+        # Download the song
+        print(f"⬇️ Starting download: {query}")
+        mp3_path = download_song(query)
+        print(f"📁 Download result: {mp3_path}")
+        
+        if not mp3_path:
+            print(f"❌ Download failed (None returned): {query}")
+            processing_queue = False
+            await play_next_song(interaction)
+            return
+            
+        if not os.path.exists(mp3_path):
+            print(f"❌ File doesn't exist: {mp3_path}")
+            processing_queue = False
+            await play_next_song(interaction)
+            return
+
+        file_size = os.path.getsize(mp3_path)
+        print(f"✅ File ready: {mp3_path} ({file_size} bytes)")
+        
+        if file_size < 1000:  # Less than 1KB is probably an error
+            print(f"❌ File too small, probably corrupted: {file_size} bytes")
+            processing_queue = False
+            await play_next_song(interaction)
+            return
+
+        # Check if voice client is still connected
+        if not current_voice_client or not current_voice_client.is_connected():
+            print("❌ Voice client disconnected during download")
+            processing_queue = False
+            return
+
+        # Stop any currently playing audio
+        if current_voice_client.is_playing():
+            print("⏹️ Stopping current audio")
+            current_voice_client.stop()
 
         now_playing = query
         is_playing = True
         
-        # High quality FFmpeg options
+        print(f"🎵 Starting playback: {query}")
+        
+        # Simplified FFmpeg options for debugging
         ffmpeg_options = {
-            'options': '-vn -b:a 320k -ar 48000 -ac 2 -filter:a "volume=0.8"'
+            'options': '-vn'
         }
         
         def after_playing(error):
+            global is_playing, processing_queue
+            print(f"🔄 after_playing called for: {query}")
+            
             if error:
-                print(f"❌ Player error: {error}")
+                print(f"❌ Playback error: {error}")
             else:
                 print(f"✅ Finished playing: {query}")
             
-            # Schedule next song
-            asyncio.run_coroutine_threadsafe(play_next_song(interaction), bot.loop)
+            is_playing = False
+            processing_queue = False
+            
+            # Schedule next song with a small delay
+            def schedule_next():
+                asyncio.run_coroutine_threadsafe(play_next_song(interaction), bot.loop)
+            
+            # Use bot's loop to schedule the next song
+            bot.loop.call_later(0.5, schedule_next)
 
-        # Play the audio with high quality options
-        audio_source = FFmpegPCMAudio(mp3_path, **ffmpeg_options)
-        current_voice_client.play(audio_source, after=after_playing)
-        
-        print(f"🎵 Now playing: {query}")
-        
-        # Send now playing message to channel
         try:
-            channel = interaction.channel or interaction.followup
-            if hasattr(channel, 'send'):
-                await channel.send(f"🎵 Now playing: **{query}**")
-        except:
-            pass  # Ignore if we can't send message
+            # Create audio source
+            audio_source = FFmpegPCMAudio(mp3_path, **ffmpeg_options)
+            print(f"🎧 Audio source created for: {query}")
+            
+            # Start playing
+            current_voice_client.play(audio_source, after=after_playing)
+            print(f"▶️ Playback started: {query}")
+            
+            # Send message to Discord
+            try:
+                if hasattr(interaction, 'followup'):
+                    await interaction.followup.send(f"🎵 Now playing: **{query}**")
+                elif hasattr(interaction, 'channel') and interaction.channel:
+                    await interaction.channel.send(f"🎵 Now playing: **{query}**")
+            except Exception as msg_error:
+                print(f"⚠️ Could not send message: {msg_error}")
+                
+        except Exception as play_error:
+            print(f"❌ Error starting playback: {play_error}")
+            is_playing = False
+            processing_queue = False
+            await play_next_song(interaction)
             
     except Exception as e:
-        print(f"❌ Error in play_next_song: {e}")
+        print(f"❌ Major error in play_next_song: {e}")
+        import traceback
+        traceback.print_exc()
+        processing_queue = False
         is_playing = False
-        await play_next_song(interaction)  # Try next song
 
 
 @tree.command(name="play", description="Play a song from YouTube or Spotify")
@@ -160,11 +270,11 @@ async def playlist(interaction: discord.Interaction, url: str):
             await interaction.followup.send("❌ No tracks found in playlist.")
             return
 
-        # Add all tracks to queue
+        # Add all tracks to queue WITHOUT downloading them yet
         for track in tracks:
             await song_queue.put(track)
 
-        await interaction.followup.send(f"✅ Queued {len(tracks)} songs from playlist.")
+        await interaction.followup.send(f"✅ Queued {len(tracks)} songs from playlist. Starting playback...")
 
         global current_voice_client, is_playing
         
@@ -172,7 +282,7 @@ async def playlist(interaction: discord.Interaction, url: str):
         if not current_voice_client or not current_voice_client.is_connected():
             current_voice_client = await user.voice.channel.connect()
 
-        # Start playing if nothing is playing
+        # Start playing if nothing is playing (downloads will happen one by one)
         if not is_playing:
             await play_next_song(interaction)
             
@@ -209,7 +319,7 @@ async def skip(interaction: discord.Interaction):
 
 @tree.command(name="stop", description="Stop playing and clear the queue")
 async def stop(interaction: discord.Interaction):
-    global is_playing, now_playing
+    global is_playing, now_playing, processing_queue
     
     # Clear the queue
     while not song_queue.empty():
@@ -224,18 +334,20 @@ async def stop(interaction: discord.Interaction):
         
     is_playing = False
     now_playing = None
+    processing_queue = False
     await interaction.response.send_message("⏹️ Stopped and cleared queue.")
 
 
 @tree.command(name="disconnect", description="Disconnect from voice channel")
 async def disconnect(interaction: discord.Interaction):
-    global current_voice_client, is_playing, now_playing
+    global current_voice_client, is_playing, now_playing, processing_queue
     
     if current_voice_client:
         await current_voice_client.disconnect()
         current_voice_client = None
         is_playing = False
         now_playing = None
+        processing_queue = False
         
         # Clear queue
         while not song_queue.empty():
@@ -330,4 +442,9 @@ async def on_voice_state_update(member, before, after):
             print("🤖 Bot left empty voice channel")
 
 
-bot.run(os.getenv("DISCORD_TOKEN"))
+if __name__ == "__main__":
+    try:
+        bot.run(CREDENTIALS['discord_token'])
+    except Exception as e:
+        print(f"❌ Failed to start bot: {e}")
+        sys.exit(1)

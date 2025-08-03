@@ -1,0 +1,5 @@
+discord.py>=2.3.2
+python-dotenv
+spotipy>=2.23.0
+yt-dlp
+ffmpeg-python

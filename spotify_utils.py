@@ -1,14 +1,21 @@
 import os
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
-from dotenv import load_dotenv
 
-load_dotenv()
-
-sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
-    client_id=os.getenv("SPOTIFY_CLIENT_ID"),
-    client_secret=os.getenv("SPOTIFY_CLIENT_SECRET")
-))
+# Initialize Spotify client using environment variables
+# (These will be set by the main bot file after secure credential collection)
+def get_spotify_client():
+    """Get Spotify client using credentials from environment variables"""
+    client_id = os.getenv("SPOTIFY_CLIENT_ID")
+    client_secret = os.getenv("SPOTIFY_CLIENT_SECRET")
+    
+    if not client_id or not client_secret:
+        raise ValueError("Spotify credentials not found in environment variables. Make sure the main bot has set them.")
+    
+    return spotipy.Spotify(auth_manager=SpotifyClientCredentials(
+        client_id=client_id,
+        client_secret=client_secret
+    ))
 
 
 def extract_playlist_id(url):
@@ -24,6 +31,7 @@ def extract_playlist_id(url):
 def get_tracks_from_playlist(url):
     """Get all tracks from a Spotify playlist (handles pagination)"""
     try:
+        sp = get_spotify_client()
         playlist_id = extract_playlist_id(url)
         tracks = []
         
@@ -51,6 +59,9 @@ def get_tracks_from_playlist(url):
         print(f"✅ Found {len(tracks)} tracks in playlist")
         return tracks
         
+    except ValueError as e:
+        print(f"❌ Spotify credentials error: {e}")
+        return []
     except Exception as e:
         print(f"❌ Error loading Spotify playlist: {e}")
         return []
@@ -59,6 +70,7 @@ def get_tracks_from_playlist(url):
 def get_playlist_stats(url):
     """Get statistics for a Spotify playlist (handles pagination)"""
     try:
+        sp = get_spotify_client()
         playlist_id = extract_playlist_id(url)
         
         # Get playlist info
@@ -99,6 +111,14 @@ def get_playlist_stats(url):
             'artists': list(artists)
         }
         
+    except ValueError as e:
+        print(f"❌ Spotify credentials error: {e}")
+        return {
+            'name': 'Unknown',
+            'total': 0,
+            'duration_min': 0,
+            'artists': []
+        }
     except Exception as e:
         print(f"❌ Error getting playlist stats: {e}")
         return {
