@@ -36,7 +36,6 @@ Run the following command to install all necessary Python packages:
     python bot.py
 
 
-
 Preferred method command-line arguments:
 
     python bot.py YOUR_DISCORD_TOKEN YOUR_SPOTIFY_CLIENT_ID YOUR_SPOTIFY_CLIENT_SECRET
