@@ -1,7 +1,7 @@
-Discord Spotify Music Bot
+## Discord Spotify Music Bot
 
 Description:
-This is a self-hosted Discord bot that allows users to play music from Spotify and YouTube directly in voice channels. It supports individual songs, full playlists, and provides useful commands such as pause, resume, skip, and queue viewing. The bot is intended for personal or small community use and is designed to be lightweight and flexible.
+A self-hosted Discord bot that allows users to play music from Spotify and YouTube directly in voice channels. It supports individual songs, full playlists, and provides useful commands such as pause, resume, skip, and queue viewing. The bot is intended for personal or small community use and is designed to be lightweight and flexible.
 
 Goals:
 - Enable private, high-quality music playback in Discord using Spotify and YouTube.
